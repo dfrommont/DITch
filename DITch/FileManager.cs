@@ -14,7 +14,7 @@ namespace DITch
         HashingTool hashingTool = new HashingTool(true); //temp reference for below
 
         //Compress
-        public static byte[] Compress(string folderPath)
+        public byte[] CompressFolder(string folderPath)
         {
             using var memStream = new MemoryStream();
             using (var archive = new ZipArchive(memStream, ZipArchiveMode.Create, leaveOpen: true))
@@ -35,17 +35,32 @@ namespace DITch
         }
 
         //Decompress
-        public static bool Decompress(string SourcePath, string DestinationPath)
+        public void DecompressFolder(byte[] zipData, string destinationFolder)
         {
-            try
+            // Ensure destination directory exists
+            Directory.CreateDirectory(destinationFolder);
+
+            using var memoryStream = new MemoryStream(zipData);
+            using var archive = new ZipArchive(memoryStream, ZipArchiveMode.Read);
+
+            foreach (var entry in archive.Entries)
             {
-                ZipFile.ExtractToDirectory(@SourcePath, @DestinationPath);
-                return true;
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"Error decompressing file: {SourcePath}, Error: {e.Message}");
-                return false;
+                string fullPath = Path.Combine(destinationFolder, entry.FullName);
+
+                // Handle directory entries
+                if (string.IsNullOrEmpty(entry.Name))
+                {
+                    Directory.CreateDirectory(fullPath);
+                    continue;
+                }
+
+                // Ensure directory for the file exists
+                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+
+                // Extract file
+                using var entryStream = entry.Open();
+                using var fileStream = File.Create(fullPath);
+                entryStream.CopyTo(fileStream);
             }
         }
 
@@ -53,34 +68,80 @@ namespace DITch
         public byte[] Encrypt(byte[] data, string password)
         {
             using var aes = Aes.Create();
-            var key = new Rfc2898DeriveBytes(password, 16, 10000, hashingTool.GetMode() ? HashAlgorithmName.SHA256 : HashAlgorithmName.SHA1); // Salt & iterations
-            aes.Key = key.GetBytes(32); // AES-256
-            aes.IV = key.GetBytes(16);  // AES block size
+            aes.Padding = PaddingMode.PKCS7;
+
+            // Generate salt
+            byte[] salt = RandomNumberGenerator.GetBytes(16);
+
+            var key = new Rfc2898DeriveBytes(password, salt, 10000, hashingTool.GetMode() ? HashAlgorithmName.SHA256 : HashAlgorithmName.SHA1); // Salt & iterations
+            aes.Key = key.GetBytes(32);
+            aes.IV = key.GetBytes(16);
 
             using var ms = new MemoryStream();
+            ms.Write(salt, 0, salt.Length); // Prepend salt to output
+
             using var cs = new CryptoStream(ms, aes.CreateEncryptor(), CryptoStreamMode.Write);
             cs.Write(data, 0, data.Length);
-            cs.Close();
+            cs.FlushFinalBlock();
 
             return ms.ToArray();
+        }
+
+
+        public bool WriteEncryptedFile(byte[] data, string path)
+        {
+            try
+            {
+                File.WriteAllBytes(@path, data);
+            } catch (Exception e)
+            {
+                Console.WriteLine($"Error writing encrypted data to file {path}, Error: {e.Message}");
+                return false;
+            }
+            return true;
+        }
+
+        public byte[] ReadEncryptedFile(string path)
+        {
+            try
+            {
+                return File.ReadAllBytes(@path);
+            } catch (Exception e)
+            {
+                Console.WriteLine($"Error reading data from encrypted file {path}, Error: {e.Message}");
+                return [0];
+            }
         }
 
         //Decrypt
         public byte[] Decrypt(byte[] encryptedData, string password)
         {
-            using var aes = Aes.Create();
-            var key = new Rfc2898DeriveBytes(password, 16, 10000, hashingTool.GetMode() ? HashAlgorithmName.SHA256 : HashAlgorithmName.SHA1);
-            aes.Key = key.GetBytes(32);
-            aes.IV = key.GetBytes(16);
+            try
+            {
+                using var aes = Aes.Create();
+                aes.Padding = PaddingMode.PKCS7;
 
-            using var ms = new MemoryStream();
-            using var cs = new CryptoStream(ms, aes.CreateDecryptor(), CryptoStreamMode.Write);
-            cs.Write(encryptedData, 0, encryptedData.Length);
-            cs.Close();
+                using var msInput = new MemoryStream(encryptedData);
 
-            return ms.ToArray();
+                // Read the salt from the beginning
+                byte[] salt = new byte[16];
+                msInput.Read(salt, 0, salt.Length);
+
+                var key = new Rfc2898DeriveBytes(password, salt, 10000, HashAlgorithmName.SHA256);
+                aes.Key = key.GetBytes(32);
+                aes.IV = key.GetBytes(16);
+
+                using var cs = new CryptoStream(msInput, aes.CreateDecryptor(), CryptoStreamMode.Read);
+                using var msOutput = new MemoryStream();
+                cs.CopyTo(msOutput);
+
+                return msOutput.ToArray();
+            } catch (Exception e)
+            {
+                Console.WriteLine($"Failed decrypting data, likely due to incorrect password, Error: {e.Message}");
+                return [0];
+            }
         }
-
 
         //Copy file
         public bool CopyFile(string SourcePath, string destinationPath)
