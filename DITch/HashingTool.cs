@@ -38,6 +38,8 @@ namespace DITch
             return HashMode;
         }
 
+        public bool GetMode() => HashMode;
+
         public byte[] Hash(byte[] data) {
             return HashMode == false ? Sha1.ComputeHash(data) : Sha256.ComputeHash(data);
         }
