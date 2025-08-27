@@ -34,6 +34,23 @@ namespace DITch
             return memStream.ToArray();
         }
 
+        public byte[] CompressFile(string filePath)
+        {
+            using var memStream = new MemoryStream();
+            using (var archive = new ZipArchive(memStream, ZipArchiveMode.Create, leaveOpen: true))
+            {
+                var entryName = Path.GetRelativePath(filePath, filePath);
+                var entry = archive.CreateEntry(entryName);
+
+                using var entryStream = entry.Open();
+                using var fileStream = File.OpenRead(filePath);
+                fileStream.CopyTo(entryStream);
+            }
+
+            memStream.Position = 0;
+            return memStream.ToArray();
+        }
+
         //Decompress
         public void DecompressFolder(byte[] zipData, string destinationFolder)
         {
@@ -181,17 +198,49 @@ namespace DITch
         //Save meta data to a new file with hash name
         public bool SaveMetaDataFile(string MetaData, string DestinationPath, byte[] HashCode)
         {
-            if (!File.Exists(DestinationPath))
+            if (!Directory.Exists(DestinationPath))
             {
                 Console.WriteLine("File not found.");
                 return false;
             }
 
-            string metadataFilePath = DestinationPath + BitConverter.ToUInt32(HashCode, 0) + ".metadata";
+            string metadataFilePath = DestinationPath + HashingTool.ToBase64Url(HashCode) + ".metadata";
 
             File.WriteAllText(metadataFilePath, MetaData);
 
             return true;
+        }
+
+        public string GetDirectoryStructure(string rootPath)
+        {
+            if (!Directory.Exists(rootPath))
+                throw new DirectoryNotFoundException($"The directory '{rootPath}' does not exist.");
+
+            StringBuilder sb = new StringBuilder();
+            BuildStructure(rootPath, sb, 0);
+            return sb.ToString();
+        }
+
+        private void BuildStructure(string path, StringBuilder sb, int depth)
+        {
+            string indent = new string('\t', depth);
+            string dirName = Path.GetFileName(path);
+            if (string.IsNullOrEmpty(dirName))
+                dirName = path; // In case of root directory (like C:\)
+
+            sb.AppendLine($"{indent}[{dirName}]");
+
+            // List files in the directory
+            foreach (var file in Directory.GetFiles(path))
+            {
+                sb.AppendLine($"{indent}\t{Path.GetFileName(file)}");
+            }
+
+            // Recursively list subdirectories
+            foreach (var dir in Directory.GetDirectories(path))
+            {
+                BuildStructure(dir, sb, depth + 1);
+            }
         }
     }
 }

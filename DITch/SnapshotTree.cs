@@ -25,9 +25,9 @@
             Root = root;
         }
 
-        public SnapshotTree(string commitMessage, byte[] commitHash, byte[] previousCommitHash)
+        public SnapshotTree(string commitMessage, byte[] commitHash, byte[] previousCommitHash, DateTime dateTime)
         {
-            Root = new SnapshotTreeNode(new CommitSnapshot(commitMessage, commitHash, previousCommitHash));
+            Root = new SnapshotTreeNode(new CommitSnapshot(commitMessage, commitHash, previousCommitHash, dateTime));
         }
 
         public SnapshotTreeNode GetRoot() => Root;

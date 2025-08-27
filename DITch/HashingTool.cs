@@ -7,7 +7,7 @@ using System.Security.Cryptography;
 
 namespace DITch
 {
-    internal class HashingTool
+    public class HashingTool
     {
         private SHA1 Sha1;
         private SHA256 Sha256;
@@ -42,6 +42,27 @@ namespace DITch
 
         public byte[] Hash(byte[] data) {
             return HashMode == false ? Sha1.ComputeHash(data) : Sha256.ComputeHash(data);
+        }
+
+        public static string ToBase64Url(byte[] data)
+        {
+            return Convert.ToBase64String(data)
+                .Replace('+', '-')
+                .Replace('/', '_')
+                .TrimEnd('=');
+        }
+
+        public static byte[] FromBase64Url(string base64Url)
+        {
+            string padded = base64Url
+                .Replace('-', '+')
+                .Replace('_', '/');
+            switch (padded.Length % 4)
+            {
+                case 2: padded += "=="; break;
+                case 3: padded += "="; break;
+            }
+            return FromBase64Url(padded);
         }
     }
 }
